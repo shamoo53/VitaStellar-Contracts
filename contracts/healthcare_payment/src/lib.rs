@@ -1095,6 +1095,8 @@ impl HealthcarePayment {
 
     pub fn escrow_claim(env: Env, claim_id: u64) -> Result<(), Error> {
         Self::require_operational(&env)?;
+        Self::acquire_lock(&env)?;
+
         let config: Config = env
             .storage()
             .instance()
@@ -1107,6 +1109,7 @@ impl HealthcarePayment {
             .ok_or(Error::ClaimNotFound)?;
 
         if claim.status != ClaimStatus::Approved && claim.status != ClaimStatus::Disputed {
+            Self::release_lock(&env);
             return Err(Error::InvalidStatus);
         }
 
@@ -1137,9 +1140,11 @@ impl HealthcarePayment {
         );
 
         if !escrow_created {
+            Self::release_lock(&env);
             return Err(Error::EscrowFailed);
         }
 
+        // CEI: Update state BEFORE any further external interaction
         claim.status = ClaimStatus::Paid;
         claim.updated_at = env.ledger().timestamp();
 
@@ -1147,6 +1152,12 @@ impl HealthcarePayment {
             .persistent()
             .set(&DataKey::Claim(claim_id), &claim);
 
+        env.events().publish(
+            (symbol_short!("ESC_PD"),),
+            (claim_id, claim.provider, claim.amount),
+        );
+
+        Self::release_lock(&env);
         Ok(())
     }
 
