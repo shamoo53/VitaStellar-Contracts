@@ -251,7 +251,7 @@
 | 205 | InvalidAmount | Generated from contract source |
 | 260 | InvalidFeeBps | Generated from contract source |
 | 380 | FeeNotSet | Generated from contract source |
-| 381 | ReentrancyGuard | Generated from contract source |
+| 381 | ReentrancyRejected | Generated from contract source |
 | 382 | InvalidStateTransition | Generated from contract source |
 | 480 | EscrowExists | Generated from contract source |
 | 481 | EscrowNotFound | Generated from contract source |
@@ -754,6 +754,7 @@
 | 372 | NotQueued | Generated from contract source |
 | 375 | AlreadyQueued | Generated from contract source |
 | 376 | NotReady | Generated from contract source |
+| 377 | ReentrancyRejected | Generated from contract source |
 | 500 | InsufficientFunds | Generated from contract source |
 | 502 | StorageFull | Generated from contract source |
 | 702 | CrossChainTimeout | Generated from contract source |
