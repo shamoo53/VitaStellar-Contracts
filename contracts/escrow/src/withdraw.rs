@@ -10,7 +10,7 @@ pub fn require_not_reentrant(env: &Env) -> Result<(), Error> {
         .get(&REENTRANCY_LOCK)
         .unwrap_or(false);
     if locked {
-        return Err(Error::ReentrancyGuard);
+        return Err(Error::ReentrancyRejected);
     }
     env.storage().temporary().set(&REENTRANCY_LOCK, &true);
     env.storage()

@@ -24,14 +24,13 @@ pub use types::{
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Map, String};
 
 use approvals::{add_credit, approve_release as do_approve, mark_disputed as do_mark_disputed};
+use contract_template::reentrancy;
 use status::{
     get_active_escrows_count, get_daily_stats, get_dispute_rate, get_donor_reputation,
     get_platform_health_score, get_refund_rate, get_settled_rate, get_stats_summary,
     get_token_volume, get_total_escrows, get_total_volume, update_stats,
 };
-use withdraw::{
-    clear_reentrancy, get_credit as do_get_credit, require_not_reentrant, withdraw as do_withdraw,
-};
+use withdraw::{get_credit as do_get_credit, withdraw as do_withdraw};
 
 #[contract]
 pub struct EscrowContract;
@@ -129,94 +128,104 @@ impl EscrowContract {
     }
 
     pub fn release_escrow(env: Env, order_id: u64) -> Result<bool, Error> {
-        require_not_reentrant(&env)?;
-        let fee_conf: FeeConfig = env
-            .storage()
-            .instance()
-            .get(&FEE_CONF)
-            .ok_or(Error::FeeNotSet)?;
-        let mut escrows: Map<u64, Escrow> = env
-            .storage()
-            .persistent()
-            .get(&ESCROWS)
-            .unwrap_or(Map::new(&env));
-        let mut e = escrows.get(order_id).ok_or(Error::EscrowNotFound)?;
-
-        if e.status == EscrowStatus::Settled || e.status == EscrowStatus::Refunded {
-            return Err(Error::AlreadySettled);
+        if !reentrancy::enter(&env) {
+            return Err(Error::ReentrancyRejected);
         }
-        if e.status == EscrowStatus::Pending {
-            return Err(Error::InvalidStateTransition);
-        }
-        if e.approvals.len() < 2 {
-            return Err(Error::InsufficientApprovals);
-        }
+        let result = (|| {
+            let fee_conf: FeeConfig = env
+                .storage()
+                .instance()
+                .get(&FEE_CONF)
+                .ok_or(Error::FeeNotSet)?;
+            let mut escrows: Map<u64, Escrow> = env
+                .storage()
+                .persistent()
+                .get(&ESCROWS)
+                .unwrap_or(Map::new(&env));
+            let mut e = escrows.get(order_id).ok_or(Error::EscrowNotFound)?;
 
-        e.status = EscrowStatus::Settled;
-        escrows.set(order_id, e.clone());
-        env.storage().persistent().set(&ESCROWS, &escrows);
+            if e.status == EscrowStatus::Settled || e.status == EscrowStatus::Refunded {
+                return Err(Error::AlreadySettled);
+            }
+            if e.status == EscrowStatus::Pending {
+                return Err(Error::InvalidStateTransition);
+            }
+            if e.approvals.len() < 2 {
+                return Err(Error::InsufficientApprovals);
+            }
 
-        let fee = e
-            .amount
-            .checked_mul(fee_conf.platform_fee_bps as i128)
-            .map(|n| n / 10_000)
-            .ok_or(Error::Overflow)?;
-        let provider_amount = e.amount.saturating_sub(fee);
-        add_credit(&env, &e.payee, provider_amount);
-        add_credit(&env, &fee_conf.fee_receiver, fee);
-        update_stats(&env, 0, false, true, false, false, -1);
-        env.events().publish(
-            (symbol_short!("EscRel"), order_id),
-            (
-                e.payee,
-                provider_amount,
-                fee_conf.fee_receiver,
-                fee,
-                e.token,
-            ),
-        );
-        clear_reentrancy(&env);
-        Ok(true)
+            e.status = EscrowStatus::Settled;
+            escrows.set(order_id, e.clone());
+            env.storage().persistent().set(&ESCROWS, &escrows);
+
+            let fee = e
+                .amount
+                .checked_mul(fee_conf.platform_fee_bps as i128)
+                .map(|n| n / 10_000)
+                .ok_or(Error::Overflow)?;
+            let provider_amount = e.amount.saturating_sub(fee);
+            add_credit(&env, &e.payee, provider_amount);
+            add_credit(&env, &fee_conf.fee_receiver, fee);
+            update_stats(&env, 0, false, true, false, false, -1);
+            env.events().publish(
+                (symbol_short!("EscRel"), order_id),
+                (
+                    e.payee,
+                    provider_amount,
+                    fee_conf.fee_receiver,
+                    fee,
+                    e.token,
+                ),
+            );
+            Ok(true)
+        })();
+        reentrancy::exit(&env);
+        result
     }
 
     pub fn refund_escrow(env: Env, order_id: u64, reason: String) -> Result<bool, Error> {
-        require_not_reentrant(&env)?;
-        let mut escrows: Map<u64, Escrow> = env
-            .storage()
-            .persistent()
-            .get(&ESCROWS)
-            .unwrap_or(Map::new(&env));
-        let mut e = escrows.get(order_id).ok_or(Error::EscrowNotFound)?;
-
-        if e.status == EscrowStatus::Settled || e.status == EscrowStatus::Refunded {
-            return Err(Error::AlreadySettled);
+        if !reentrancy::enter(&env) {
+            return Err(Error::ReentrancyRejected);
         }
-        if e.status == EscrowStatus::Pending && e.approvals.is_empty() {
-            return Err(Error::NoBasisToRefund);
-        }
+        let result = (|| {
+            let mut escrows: Map<u64, Escrow> = env
+                .storage()
+                .persistent()
+                .get(&ESCROWS)
+                .unwrap_or(Map::new(&env));
+            let mut e = escrows.get(order_id).ok_or(Error::EscrowNotFound)?;
 
-        let was_active = e.status == EscrowStatus::Active || e.status == EscrowStatus::Disputed;
-        e.status = EscrowStatus::Refunded;
-        e.reason = reason.clone();
-        escrows.set(order_id, e.clone());
-        env.storage().persistent().set(&ESCROWS, &escrows);
+            if e.status == EscrowStatus::Settled || e.status == EscrowStatus::Refunded {
+                return Err(Error::AlreadySettled);
+            }
+            if e.status == EscrowStatus::Pending && e.approvals.is_empty() {
+                return Err(Error::NoBasisToRefund);
+            }
 
-        add_credit(&env, &e.payer, e.amount);
-        update_stats(
-            &env,
-            0,
-            false,
-            false,
-            true,
-            false,
-            if was_active { -1 } else { 0 },
-        );
-        env.events().publish(
-            (symbol_short!("Refunded"), order_id),
-            (e.payer, e.amount, e.token, reason),
-        );
-        clear_reentrancy(&env);
-        Ok(true)
+            let was_active = e.status == EscrowStatus::Active || e.status == EscrowStatus::Disputed;
+            e.status = EscrowStatus::Refunded;
+            e.reason = reason.clone();
+            escrows.set(order_id, e.clone());
+            env.storage().persistent().set(&ESCROWS, &escrows);
+
+            add_credit(&env, &e.payer, e.amount);
+            update_stats(
+                &env,
+                0,
+                false,
+                false,
+                true,
+                false,
+                if was_active { -1 } else { 0 },
+            );
+            env.events().publish(
+                (symbol_short!("Refunded"), order_id),
+                (e.payer, e.amount, e.token, reason),
+            );
+            Ok(true)
+        })();
+        reentrancy::exit(&env);
+        result
     }
 
     pub fn get_escrow(env: Env, order_id: u64) -> Option<Escrow> {
@@ -366,17 +375,16 @@ mod test {
         client
             .mock_all_auths()
             .approve_release(&10u64, &Address::generate(&env));
-        // Trip the reentrancy lock inside contract context then verify guard fires
-        use soroban_sdk::symbol_short;
         let cid = env.register_contract(None, EscrowContract);
         env.as_contract(&cid, || {
             env.storage()
-                .temporary()
-                .set(&symbol_short!("relock"), &true);
+                .instance()
+                .set(&symbol_short!("reentrant"), &true); // ✅ fixed: was "reentrancy" (10 chars)
         });
-        // A fresh contract instance won't have its lock set, so just verify
-        // the error codes are correct (full reentrancy tested via withdraw test)
-        assert_eq!(Error::ReentrancyGuard as u32, 381);
+        assert_eq!(
+            client.try_release_escrow(&10u64),
+            Err(Error::ReentrancyRejected)
+        );
     }
 
     #[test]
