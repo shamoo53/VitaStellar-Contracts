@@ -1,17 +1,15 @@
 [package]
-name = "escrow"
+name = "reentrancy-guard"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-repository.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [dependencies]
-soroban-sdk.workspace = true
-reentrancy-guard = { path = "../reentrancy_guard" }
+soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

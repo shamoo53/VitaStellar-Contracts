@@ -24,7 +24,7 @@ pub use types::{
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Map, String};
 
 use approvals::{add_credit, approve_release as do_approve, mark_disputed as do_mark_disputed};
-use contract_template::reentrancy;
+use reentrancy_guard as reentrancy;
 use status::{
     get_active_escrows_count, get_daily_stats, get_dispute_rate, get_donor_reputation,
     get_platform_health_score, get_refund_rate, get_settled_rate, get_stats_summary,
