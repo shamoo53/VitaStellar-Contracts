@@ -78,6 +78,7 @@
 | 2 | AlreadyInitialized | Contract has already been initialized. |
 | 3 | Unauthorized | Caller is not authorized to perform this action. |
 | 4 | InputTooLong | A string or bytes input exceeded the maximum allowed length. |
+| 5 | ReentrantCall | Raised when `reentrancy::enter` returns `false` because the lock is already held — i.e. a guarded function was re-entered mid-call. |
 
 ### contract_usage_analytics
 
