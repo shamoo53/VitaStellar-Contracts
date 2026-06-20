@@ -25,6 +25,7 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Ma
 
 use approvals::{add_credit, approve_release as do_approve, mark_disputed as do_mark_disputed};
 use reentrancy_guard as reentrancy;
+use contract_template::reentrancy;
 use status::{
     get_active_escrows_count, get_daily_stats, get_dispute_rate, get_donor_reputation,
     get_platform_health_score, get_refund_rate, get_settled_rate, get_stats_summary,
