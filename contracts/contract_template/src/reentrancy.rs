@@ -21,8 +21,4 @@ pub fn enter(env: &Env) -> bool {
 /// Release the per-contract reentrancy lock.
 pub fn exit(env: &Env) {
     env.storage().instance().remove(&REENTRANCY_LOCK);
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 3f40277 (resolved conflict)
