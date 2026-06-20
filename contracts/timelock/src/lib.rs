@@ -1,8 +1,8 @@
 #![no_std]
 
 pub mod errors;
-use contract_template::reentrancy;
 pub use errors::Error;
+use reentrancy_guard as reentrancy;
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, Symbol,
 };
